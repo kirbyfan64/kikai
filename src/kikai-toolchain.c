@@ -45,10 +45,8 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
   }
 
   g_autoptr(GFile) make_standalone_toolchain =
-    g_file_get_child(g_file_get_child(g_file_get_child(g_file_new_for_path(ndk),
-                                                       "build"),
-                                      "tools"),
-                     "make_standalone_toolchain.py");
+    kikai_join(g_file_new_for_path(ndk), "build", "tools",
+               "make_standalone_toolchain.py", NULL);
   if (!g_file_query_exists(make_standalone_toolchain, NULL)) {
     g_printerr("%s does not exist.", g_file_get_path(make_standalone_toolchain));
     return FALSE;
@@ -58,8 +56,7 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
     g_autoptr(GError) error = NULL;
 
     const gchar *platform = g_array_index(spec->platforms, gchar *, i);
-    g_autoptr(GFile) target = g_file_get_child(g_file_get_child(storage, "toolchains"),
-                                               platform);
+    g_autoptr(GFile) target = kikai_join(storage, "toolchains", platform , NULL);
     g_autoptr(GFile) meta = g_file_get_child(target, ".kikai-meta");
 
     g_autofree gchar *current_hash = kikai_hash_bytes((guchar*)spec->api, -1,
@@ -85,13 +82,11 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
                                       "--install-dir", g_file_get_path(target), NULL);
     if (sp == NULL) {
       g_printerr("Failed to spawn make_standalone_toolchain.py: %s", error->message);
-      g_error_free(error);
       return FALSE;
     }
 
     if (!g_subprocess_wait_check(sp, NULL, &error)) {
       g_printerr("make_standalone_toolchain failed: %s", error->message);
-      g_error_free(error);
       return FALSE;
     }
 
@@ -101,22 +96,18 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
       if (!g_spawn_sync(g_file_get_path(target), args, NULL, G_SPAWN_DEFAULT, NULL, NULL,
                         NULL, NULL, &status, &error)) {
         g_printerr("Failed to spawn toolchain.after: %s", error->message);
-        g_error_free(error);
         return FALSE;
       }
 
       if (!g_spawn_check_exit_status(status, &error)) {
         g_printerr("toolchain.after failed: %s", error->message);
-        g_error_free(error);
         return FALSE;
       }
     }
 
     if (!g_file_replace_contents(meta, current_hash, strlen(current_hash), "", 0,
                                  G_FILE_CREATE_NONE, NULL, NULL, &error)) {
-      g_printerr("Failed to save toolchain completion mark for %s toolchain: %s",
-                 platform, error->message);
-      g_error_free(error);
+      g_printerr("Failed to save %s toolchain metadata: %s", platform, error->message);
       return FALSE;
     }
   }

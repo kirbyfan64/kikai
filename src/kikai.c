@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include "kikai-builderspec.h"
+#include "kikai-source.h"
 #include "kikai-toolchain.h"
 #include "kikai-utils.h"
 
@@ -57,9 +58,14 @@ int main(int argc, char **argv) {
 
     gchar *id = kikai_hash_bytes((guchar*)module_name, -1, NULL);
 
-    kikai_printstatus("build", "Going to build %s.", module_name);
+    kikai_printstatus("build", "Building: %s", module_name);
     for (int i = 0; i < module->sources->len; i++) {
-      /* kikai_processsource(id, module->sources[i]); */
+      KikaiModuleSourceSpec *source = &g_array_index(module->sources,
+                                                     KikaiModuleSourceSpec, i);
+      g_autoptr(GFile) extracted = kikai_processsource(storage, id, source);
+      if (extracted == NULL) {
+        return 1;
+      }
     }
 
     modules_to_run++;

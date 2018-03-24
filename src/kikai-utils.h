@@ -9,6 +9,7 @@
 #define KIKAI_CRED "\033[31m"
 #define KIKAI_CCYAN "\033[36m"
 
-void kikai_printstatus(const gchar *descr, const gchar *fmt, ...);
+void kikai_printstatus(const gchar *descr, const gchar *fmt, ...) G_GNUC_PRINTF(2, 3);
 gboolean kikai_mkdir_parents(GFile *dir);
-gchar *kikai_hash_bytes(const guchar *first, ...);
+gchar *kikai_hash_bytes(const guchar *first, ...) G_GNUC_NULL_TERMINATED;
+GFile *kikai_join(GFile *parent, const gchar *child, ...) G_GNUC_NULL_TERMINATED;
