@@ -1,0 +1,33 @@
+install-root: install
+
+toolchain:
+  api: 21
+  platforms: [arm]
+  stl: libc++
+  after: |
+    sed -i '/IP_ADD_SOURCE_MEMBERSHIP/d' sysroot/usr/include/linux/in.h
+
+modules:
+  cairo:
+    sources:
+      - url: url
+        strip-parents: 1
+    dependencies: []
+    build:
+      type: simple
+      configure-options: --disable-this --disable-that
+      make-options: -C gettext-runtime
+    #   type: simple
+      steps:
+        - name: configure
+          run: |
+            echo 123
+            echo 456
+
+# modules:
+#   cairo:
+#     sources:
+#       - url: url
+#       - strip-parents: 1
+#     dependencies:
+#       - glib
