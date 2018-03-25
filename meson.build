@@ -12,7 +12,7 @@ libm = meson.get_compiler('c').find_library('m', required : false)
 executable(
   'kikai',
   [
-    'src/kikai.c', 'src/kikai-builderspec.c', 'src/kikai-source.c',
+    'src/kikai.c', 'src/kikai-build.c', 'src/kikai-builderspec.c', 'src/kikai-source.c',
     'src/kikai-toolchain.c', 'src/kikai-utils.c',
   ],
   dependencies : [glib, gio, gobject, libarchive, libcurl, yaml, libm])

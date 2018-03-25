@@ -47,6 +47,11 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  g_autoptr(GFile) install_root = g_file_new_for_path(builder.install_root);
+  if (!kikai_mkdir_parents(install_root)) {
+    return 1;
+  }
+
   while (*modules_to_run) {
     const gchar *module_name = *modules_to_run;
 
@@ -64,6 +69,10 @@ int main(int argc, char **argv) {
                                                      KikaiModuleSourceSpec, i);
       g_autoptr(GFile) extracted = kikai_processsource(storage, id, source);
       if (extracted == NULL) {
+        return 1;
+      }
+
+      if (!kikai_build(module->build, extracted, install_root)) {
         return 1;
       }
     }

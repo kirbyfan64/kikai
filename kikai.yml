@@ -14,10 +14,10 @@ modules:
         strip-parents: 1
     dependencies: []
     build:
-      type: simple
+      # type: autotools
       configure-options: --disable-this --disable-that
       make-options: -C gettext-runtime
-    #   type: simple
+      type: simple
       steps:
         - name: configure
           run: |
