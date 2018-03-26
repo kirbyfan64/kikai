@@ -361,6 +361,7 @@ gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
   }
 
   gboolean update_extracted = update_download ||
+                              !g_file_query_exists(extracted, NULL) ||
                               needs_update("extracted", module_id, download_id, NULL,
                                            NULL, NULL);
 

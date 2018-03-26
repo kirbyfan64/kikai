@@ -363,11 +363,35 @@ static gboolean yaml_to_build(KikaiModuleBuildSpec *build, KikaiModuleSpec *modu
       return FALSE;
     }
 
+    GValue *cflags_g = NULL;
+    if (g_hash_table_lookup(data, "cflags") &&
+        !check_key_type(data, G_TYPE_STRING, "cflags", &cflags_g,
+                        "modules.%s.build.cflags", module->name)) {
+      return FALSE;
+    }
+
+    GValue *cppflags_g = NULL;
+    if (g_hash_table_lookup(data, "cppflags") &&
+        !check_key_type(data, G_TYPE_STRING, "cppflags", &cppflags_g,
+                        "modules.%s.build.cppflags", module->name)) {
+      return FALSE;
+    }
+
+    GValue *ldflags_g = NULL;
+    if (g_hash_table_lookup(data, "ldflags") &&
+        !check_key_type(data, G_TYPE_STRING, "ldflags", &ldflags_g,
+                        "modules.%s.build.ldflags", module->name)) {
+      return FALSE;
+    }
+
     build->type = KIKAI_BUILD_AUTOTOOLS;
     build->autotools.configure_options = configure_options_g ?
                                          g_value_get_string(configure_options_g) : NULL;
     build->autotools.make_options = make_options_g ? g_value_get_string(make_options_g)
                                     : NULL;
+    build->autotools.cflags = cflags_g ? g_value_get_string(cflags_g) : NULL;
+    build->autotools.cppflags = cppflags_g ? g_value_get_string(cppflags_g) : NULL;
+    build->autotools.ldflags = ldflags_g ? g_value_get_string(ldflags_g) : NULL;
   } else {
     g_printerr("module.%s.build.type must be either simple or autotools.",
                module->name);

@@ -155,6 +155,13 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
       }
     }
 
+    g_autoptr(GFile) include = g_file_get_child(install, "include");
+    g_autoptr(GFile) lib = g_file_get_child(install, "lib");
+    g_autoptr(GFile) pkgconfig = g_file_get_child(lib, "pkgconfig");
+
+    g_autofree gchar *include_arg = g_strconcat("-I", g_file_get_path(include), NULL);
+    g_autofree gchar *lib_arg = g_strconcat("-L", g_file_get_path(lib), NULL);
+
     GArray *configure_args = g_array_new(TRUE, FALSE, sizeof(gchar *));
 
     const gchar *configure_path = g_file_get_path(configure);
@@ -165,6 +172,25 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
 
     g_autofree gchar *configure_cxx = g_strjoin("=", "CXX", toolchain->cxx, NULL);
     g_array_append_val(configure_args, configure_cxx);
+
+    g_autofree gchar *cflags = g_strjoin(" ", include_arg, "-fPIC", "-fPIE",
+                                         spec.autotools.cflags, NULL);
+    g_autofree gchar *configure_cflags = g_strjoin("=", "CFLAGS", cflags, NULL);
+    g_array_append_val(configure_args, configure_cflags);
+
+    g_autofree gchar *cppflags = g_strjoin(" ", include_arg, spec.autotools.cppflags,
+                                           NULL);
+    g_autofree gchar *configure_cppflags = g_strjoin("=", "CPPFLAGS", cppflags, NULL);
+    g_array_append_val(configure_args, configure_cppflags);
+
+    g_autofree gchar *ldflags = g_strjoin(" ", lib_arg, "-pie", spec.autotools.ldflags,
+                                          NULL);
+    g_autofree gchar *configure_ldflags = g_strjoin("=", "LDFLAGS", ldflags, NULL);
+    g_array_append_val(configure_args, configure_ldflags);
+
+    g_autofree gchar *configure_pkgconfig = g_strjoin("=", "PKG_CONFIG_PATH",
+                                                      g_file_get_path(pkgconfig), NULL);
+    g_array_append_val(configure_args, configure_pkgconfig);
 
     g_autofree gchar *configure_prefix = g_strjoin("=", "--prefix",
                                                    g_file_get_path(install), NULL);

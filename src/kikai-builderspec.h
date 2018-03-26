@@ -33,7 +33,7 @@ struct KikaiModuleBuildSpec {
       GArray *steps;
     } simple;
     struct {
-      const gchar *configure_options, *make_options;
+      const gchar *configure_options, *make_options, *cflags, *cppflags, *ldflags;
     } autotools;
   };
 };
