@@ -12,6 +12,8 @@ modules:
     sources:
       - url: ftp://sourceware.org/pub/libffi/libffi-3.2.1.tar.gz
         strip-parents: 1
+        after: |
+          sed -i 's/stmeqia/stmiaeq/' src/arm/sysv.S
     dependencies: []
     build:
       type: autotools

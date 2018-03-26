@@ -18,7 +18,7 @@ struct KikaiToolchainSpec {
 };
 
 struct KikaiModuleSourceSpec {
-  const gchar *url;
+  const gchar *url, *after;
   gint strip_parents;
 };
 

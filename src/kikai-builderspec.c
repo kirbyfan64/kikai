@@ -249,10 +249,16 @@ static gboolean yaml_to_sources(GArray **sources, KikaiModuleSpec *module,
     }
 
     GHashTable *source_data = g_value_get_boxed(source_g);
-    GValue *url_g, *strip_parents_g = NULL;
+    GValue *url_g, *after_g = NULL, *strip_parents_g = NULL;
 
     if (!check_key_type(source_data, G_TYPE_STRING, "url", &url_g,
                         "modules.%s.sources[%d].url", module->name, i)) {
+      return FALSE;
+    }
+
+    if (g_hash_table_lookup(source_data, "after") != NULL &&
+        !check_key_type(source_data, G_TYPE_STRING, "after", &after_g,
+                        "modules.%s.sources[%d].after", module->name, i)) {
       return FALSE;
     }
 
@@ -264,6 +270,7 @@ static gboolean yaml_to_sources(GArray **sources, KikaiModuleSpec *module,
 
     KikaiModuleSourceSpec source;
     source.url = g_value_get_string(url_g);
+    source.after = after_g ? g_value_get_string(after_g) : NULL;
     source.strip_parents = strip_parents_g ? atoi(g_value_get_string(strip_parents_g))
                             : -1;
     g_array_append_val(*sources, source);

@@ -331,7 +331,10 @@ static gboolean extract_file(GFile *archive, GFile *extracted, guint64 size,
 
 gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
                              KikaiModuleSourceSpec *source, gboolean *updated) {
-  g_autofree gchar *download_id = kikai_hash_bytes((guchar*)source->url, -1, NULL);
+  g_autofree gchar *download_id = kikai_hash_bytes((guchar*)source->url, -1,
+                                                   (guchar*)source->after, -1,
+                                                   (guchar*)&source->strip_parents,
+                                                   sizeof(source->strip_parents), NULL);
   g_autoptr(GFile) downloads = kikai_join(storage, "downloads", module_id, NULL);
 
   guint64 size = 0;
@@ -373,8 +376,25 @@ gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
       return FALSE;
     }
 
-    if (!set_key("extracted", module_id, download_id, hash, size)) {
-      return FALSE;
+    if (source->after != NULL) {
+      gchar *args[] = {"/bin/sh", "-ec", (gchar *)source->after, NULL};
+
+      g_autoptr(GError) error = NULL;
+      gint status;
+      if (!g_spawn_sync(g_file_get_path(extracted), args, NULL, G_SPAWN_DEFAULT, NULL,
+                        NULL, NULL, NULL, &status, &error)) {
+        g_printerr("Failed to spawn build step: %s", error->message);
+        return FALSE;
+      }
+
+      if (!g_spawn_check_exit_status(status, &error)) {
+        g_printerr("Build step failed: %s", error->message);
+        return FALSE;
+      }
+
+      if (!set_key("extracted", module_id, download_id, hash, size)) {
+        return FALSE;
+      }
     }
   }
 
