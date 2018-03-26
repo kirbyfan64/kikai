@@ -103,12 +103,8 @@ static gboolean read_yaml(GValue *result, const gchar *file) {
   yaml_parser_set_input_file(&parser, fp);
 
   if (!yaml_parser_load(&parser, &doc))  {
-    g_printerr("Failed to parse %s: %u", file, parser.error);
-    /* switch (parser.error) { */
-    /* case YAML_MEMORY_ERROR: */
-    /*   g_printerr("  out of memory."); */
-    /*   break; */
-    /* } */
+    g_printerr("Failed to parse %s:%zu:%zu: %s", file,parser.problem_mark.line + 1,
+               parser.problem_mark.column + 1, parser.problem);
     goto done;
   }
 
