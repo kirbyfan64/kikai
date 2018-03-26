@@ -31,7 +31,7 @@ static gboolean needs_update(gchar *current_hash) {
   return strcmp(current_hash, old_hash) != 0;
 }
 
-gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
+gboolean kikai_toolchain_create(GFile *storage, GArray *toolchains,
                                 const KikaiToolchainSpec *spec) {
   gchar *ndk = find_ndk();
   if (ndk == NULL) {
@@ -46,11 +46,32 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
     return FALSE;
   }
 
+  const gchar *platform_names[] = {"arm", "x86"};
+  const gchar *platform_triples[] = {"arm-linux-androideabi", "i686-linux-android"};
+
   for (int i = 0; i < spec->platforms->len; i++) {
     g_autoptr(GError) error = NULL;
 
-    const gchar *platform = g_array_index(spec->platforms, gchar *, i);
-    g_autoptr(GFile) target = kikai_join(storage, "toolchains", platform , NULL);
+    KikaiToolchainPlatform platform = g_array_index(spec->platforms,
+                                                    KikaiToolchainPlatform, i);
+    const gchar *platform_name = platform_names[platform];
+    g_autoptr(GFile) target = kikai_join(storage, "toolchains", platform_name, NULL);
+
+    const gchar *triple = platform_triples[platform];
+
+    KikaiToolchain toolchain;
+    toolchain.platform = g_strdup(platform_name);
+    toolchain.path = g_strdup(g_file_get_path(target));
+
+    g_autofree gchar *cc = g_strjoin("-", triple, "clang", NULL);
+    toolchain.cc = g_build_filename(g_file_get_path(target), "bin", cc, NULL);
+
+    g_autofree gchar *cxx = g_strjoin("-", triple, "clang++", NULL);
+    toolchain.cxx = g_build_filename(g_file_get_path(target), "bin", cxx, NULL);
+
+    toolchain.triple = g_strdup(triple);
+
+    g_array_append_val(toolchains, toolchain);
 
     g_autofree gchar *current_hash = kikai_hash_bytes((guchar*)spec->api, -1,
                                                       (guchar*)spec->stl, -1,
@@ -62,12 +83,12 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
     }
 
     kikai_printstatus("toolchain", "Creating %s toolchain (this may take a while)...",
-                      platform);
+                      platform_name);
 
     g_autoptr(GSubprocess) sp = g_subprocess_new(G_SUBPROCESS_FLAGS_NONE, &error,
                                       g_file_get_path(make_standalone_toolchain),
-                                      "--arch", (gchar*)platform, "--api", spec->api,
-                                      "--stl", spec->stl, "--force",
+                                      "--arch", (gchar*)platform_name,
+                                      "--api", spec->api, "--stl", spec->stl, "--force",
                                       "--install-dir", g_file_get_path(target), NULL);
     if (sp == NULL) {
       g_printerr("Failed to spawn make_standalone_toolchain.py: %s", error->message);

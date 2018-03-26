@@ -14,15 +14,21 @@ modules:
         strip-parents: 1
     dependencies: []
     build:
-      # type: autotools
-      configure-options: --disable-this --disable-that
-      make-options: -C gettext-runtime
-      type: simple
-      steps:
-        - name: configure
-          run: |
-            echo 123
-            echo 456
+      type: autotools
+      configure-options: CFLAGS="-fPIE -fPIC"
+      # make-options: -C gettext-runtime
+      # type: simple
+      # steps:
+      #   - name: configure
+      #     run: |
+      #       echo KIKAI_PREFIX: $KIKAI_PREFIX
+      #       echo KIKAI_TOOLCHAIN: $KIKAI_TOOLCHAIN
+      #       echo KIKAI_TRIPLE: $KIKAI_TRIPLE
+      #       echo KIKAI_CC: $KIKAI_CC
+      #       echo KIKAI_CXX: $KIKAI_CXX
+
+      #       echo CC: $CC
+      #       echo CXX: $CXX
 
 # modules:
 #   cairo:

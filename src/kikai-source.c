@@ -330,7 +330,7 @@ static gboolean extract_file(GFile *archive, GFile *extracted, guint64 size,
 }
 
 gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
-                             KikaiModuleSourceSpec *source) {
+                             KikaiModuleSourceSpec *source, gboolean *updated) {
   g_autofree gchar *download_id = kikai_hash_bytes((guchar*)source->url, -1, NULL);
   g_autoptr(GFile) downloads = kikai_join(storage, "downloads", module_id, NULL);
 
@@ -377,6 +377,8 @@ gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
       return FALSE;
     }
   }
+
+  *updated = *updated || update_extracted;
 
   return TRUE;
 }

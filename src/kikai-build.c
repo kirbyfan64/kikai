@@ -1,28 +1,245 @@
-#include "kikai-build.h"
-#include "kikai-utils.h"
-
 #include <glib.h>
 
-static gboolean simple_build(KikaiModuleBuildSpec spec, GFile *where, GFile *install) {
-  for (int i = 0; i < spec.simple.steps->len; i++) {
-    KikaiModuleSimpleBuildStep *step = &g_array_index(spec.simple.steps,
-                                                      KikaiModuleSimpleBuildStep, i);
-    kikai_printstatus("build", "  %s", step->name);
+#include "kikai-build.h"
+#include "kikai-toolchain.h"
+#include "kikai-utils.h"
+
+#include <string.h>
+
+static gboolean needs_update(const gchar *scope, const gchar *module_id,
+                             const gchar *step, const gchar *current_hash) {
+  g_autofree gchar *key = g_strjoin("::", scope, module_id, step, NULL);
+  g_autofree gchar *old_hash = kikai_db_get(key);
+
+  if (strcmp(old_hash, current_hash) != 0) {
+    if (old_hash == &kikai_db_missing) {
+      g_steal_pointer(&old_hash);
+    }
+
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+static gboolean set_key(const gchar *scope, const gchar *module_id,
+                        const gchar *step, const gchar *hash) {
+  g_autofree gchar *key = g_strjoin("::", scope, module_id, step, NULL);
+  return kikai_db_set(key, hash);
+}
+
+static gboolean parse_options(const gchar *step, GArray *dest, const gchar *options) {
+  g_autoptr(GError) error = NULL;
+
+  if (options == NULL) {
+    return TRUE;
+  }
+
+  gint extra_argc = 0;
+  gchar **extra_argv = NULL;
+  if (!g_shell_parse_argv(options, &extra_argc, &extra_argv, &error)) {
+    g_printerr("Failed to parse %s-options: %s", step, error->message);
+    return FALSE;
+  }
+
+  for (int i = 0; i < extra_argc; i++) {
+    g_array_append_val(dest, extra_argv[i]);
   }
 
   return TRUE;
 }
 
-static gboolean autotools_build(KikaiModuleBuildSpec spec, GFile *where,
-                                GFile *install) {
+static gboolean simple_build(KikaiToolchain *toolchain, const gchar *module_id,
+                             KikaiModuleBuildSpec spec, GFile *where, GFile *install,
+                             gboolean updated) {
+  g_auto(GStrv) env = g_get_environ();
+  env = g_environ_setenv(env, "KIKAI_PREFIX", g_file_get_path(install), TRUE);
+  env = g_environ_setenv(env, "KIKAI_TOOLCHAIN", toolchain->path, TRUE);
+  env = g_environ_setenv(env, "KIKAI_TRIPLE", toolchain->triple, TRUE);
+  env = g_environ_setenv(env, "KIKAI_CC", toolchain->cc, TRUE);
+  env = g_environ_setenv(env, "KIKAI_CXX", toolchain->cxx, TRUE);
+
+  env = g_environ_setenv(env, "PREFIX", g_file_get_path(install), TRUE);
+  env = g_environ_setenv(env, "CC", toolchain->cc, TRUE);
+  env = g_environ_setenv(env, "CXX", toolchain->cxx, TRUE);
+
+  for (int i = 0; i < spec.simple.steps->len; i++) {
+    KikaiModuleSimpleBuildStep *step = &g_array_index(spec.simple.steps,
+                                                      KikaiModuleSimpleBuildStep, i);
+
+    g_autofree gchar *hash = kikai_hash_bytes((guchar *)step->run, -1, NULL);
+    if (!needs_update("build-simple", module_id, step->name, hash)) {
+      continue;
+    }
+
+    kikai_printstatus("build", "  - %s", step->name);
+
+    g_autoptr(GError) error = NULL;
+
+    gchar *args[] = {"/bin/sh", "-ec", (gchar *)step->run, NULL};
+    gint status;
+    if (!g_spawn_sync(g_file_get_path(where), args, env, G_SPAWN_DEFAULT, NULL, NULL,
+                        NULL, NULL, &status, &error)) {
+      g_printerr("Failed to spawn build step: %s", error->message);
+      return FALSE;
+    }
+
+    if (!g_spawn_check_exit_status(status, &error)) {
+      g_printerr("Build step failed: %s", error->message);
+      return FALSE;
+    }
+
+    if (!set_key("build-simple", module_id, step->name, hash)) {
+      return FALSE;
+    }
+  }
+
   return TRUE;
 }
 
-gboolean kikai_build(KikaiModuleBuildSpec spec, GFile *where, GFile *install) {
+static gchar *hash_options(const gchar *options) {
+  return kikai_hash_bytes((guchar *)options, options != NULL ? -1 : 0, NULL);
+}
+
+static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_id,
+                                KikaiModuleBuildSpec spec, GFile *where, GFile *install,
+                                gboolean updated) {
+  g_auto(GStrv) env = g_get_environ();
+  env = g_environ_setenv(env, "PREFIX", g_file_get_path(install), TRUE);
+  env = g_environ_setenv(env, "CC", toolchain->cc, TRUE);
+  env = g_environ_setenv(env, "CXX", toolchain->cxx, TRUE);
+  env = g_environ_setenv(env, "NOCONFIGURE", "1", TRUE);
+
+  g_autoptr(GError) error = NULL;
+  gint status;
+
+  g_autofree gchar *configure_hash = hash_options(spec.autotools.configure_options),
+                   *make_hash = hash_options(spec.autotools.make_options);
+
+  if (updated || needs_update("build-autotools", module_id, "configure",
+      configure_hash)) {
+    g_autoptr(GFile) configure = g_file_get_child(where, "configure");
+    if (!g_file_query_exists(configure, NULL)) {
+      g_autoptr(GFile) autogen = g_file_get_child(where, "autogen.sh");
+      g_autofree gchar *autoreconf = g_find_program_in_path("autoreconf");
+
+      const gchar *autogen_args[] = {g_file_get_path(autogen), NULL};
+      const gchar *autoreconf_args[] = {autoreconf, "-si", NULL};
+      const gchar *descr = NULL;
+      gchar **args = NULL;
+
+      if (g_file_query_exists(autogen, NULL)) {
+        descr = "autogen.sh";
+        args = (gchar**)autogen_args;
+      } else if (autoreconf != NULL) {
+        descr = "autoreconf";
+        args = (gchar**)autoreconf_args;
+      } else {
+        g_printerr("autogen.sh does not exist, and autoreconf is not available.");
+        return FALSE;
+      }
+
+      kikai_printstatus("build", "  - %s", descr);
+
+      if (!g_spawn_sync(g_file_get_path(where), args, env, G_SPAWN_DEFAULT, NULL, NULL,
+                        NULL, NULL, &status, &error)) {
+        g_printerr("Failed to spawn %s: %s", descr, error->message);
+        return FALSE;
+      }
+
+      if (!g_spawn_check_exit_status(status, &error)) {
+        g_printerr("%s failed: %s", descr, error->message);
+        return FALSE;
+      }
+    }
+
+    GArray *configure_args = g_array_new(TRUE, FALSE, sizeof(gchar *));
+
+    const gchar *configure_path = g_file_get_path(configure);
+    g_array_append_val(configure_args, configure_path);
+
+    g_autofree gchar *configure_cc = g_strjoin("=", "CC", toolchain->cc, NULL);
+    g_array_append_val(configure_args, configure_cc);
+
+    g_autofree gchar *configure_cxx = g_strjoin("=", "CXX", toolchain->cxx, NULL);
+    g_array_append_val(configure_args, configure_cxx);
+
+    g_autofree gchar *configure_prefix = g_strjoin("=", "--prefix",
+                                                   g_file_get_path(install), NULL);
+    g_array_append_val(configure_args, configure_prefix);
+
+    g_autofree gchar *configure_host = g_strjoin("=", "--host", toolchain->triple, NULL);
+    g_array_append_val(configure_args, configure_host);
+
+    if (!parse_options("configure", configure_args, spec.autotools.configure_options)) {
+      return FALSE;
+    }
+
+    kikai_printstatus("build", "  - configure");
+
+    if (!g_spawn_sync(g_file_get_path(where), (gchar **)configure_args->data, env,
+                      G_SPAWN_DEFAULT, NULL, NULL, NULL, NULL, &status, &error)) {
+      g_printerr("Failed to spawn configure: %s", error->message);
+      return FALSE;
+    }
+
+    if (!g_spawn_check_exit_status(status, &error)) {
+      g_printerr("configure failed: %s", error->message);
+      return FALSE;
+    }
+
+    if (!set_key("build-autotools", module_id, "configure", configure_hash)) {
+      return FALSE;
+    }
+  }
+
+  if (updated || needs_update("build-autotools", module_id, "make", make_hash)) {
+    g_autoptr(GFile) makefile = g_file_get_child(where, "Makefile");
+    if (!g_file_query_exists(makefile, NULL)) {
+      g_printerr("Makefile does not exist.");
+      return FALSE;
+    }
+
+    GArray *make_args = g_array_new(TRUE, FALSE, sizeof(gchar *));
+
+    g_autofree gchar *make_path = g_build_filename(toolchain->path, "bin", "make", NULL);
+    g_array_append_val(make_args, make_path);
+
+    const gchar *make_install = "install";
+    g_array_append_val(make_args, make_install);
+
+    if (!parse_options("make", make_args, spec.autotools.make_options)) {
+      return FALSE;
+    }
+
+    kikai_printstatus("build", "  - make");
+
+    if (!g_spawn_sync(g_file_get_path(where), (gchar **)make_args->data, env,
+                      G_SPAWN_DEFAULT, NULL, NULL, NULL, NULL, &status, &error)) {
+      g_printerr("Failed to spawn make: %s", error->message);
+      return FALSE;
+    }
+
+    if (!g_spawn_check_exit_status(status, &error)) {
+      g_printerr("make failed: %s", error->message);
+      return FALSE;
+    }
+
+    if (!set_key("build-autotools", module_id, "make", make_hash)) {
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+gboolean kikai_build(KikaiToolchain *toolchain, const gchar *module_id,
+                     KikaiModuleBuildSpec spec, GFile *where, GFile *install,
+                     gboolean updated) {
   switch (spec.type) {
   case KIKAI_BUILD_SIMPLE:
-    return simple_build(spec, where, install);
+    return simple_build(toolchain, module_id, spec, where, install, updated);
   case KIKAI_BUILD_AUTOTOOLS:
-    return autotools_build(spec, where, install);
+    return autotools_build(toolchain, module_id, spec, where, install, updated);
   }
 }

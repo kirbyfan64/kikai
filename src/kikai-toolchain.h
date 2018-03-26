@@ -8,8 +8,8 @@
 typedef struct KikaiToolchain KikaiToolchain;
 
 struct KikaiToolchain {
-  const gchar *cc, *cxx, *triple;
+  const gchar *platform, *path, *cc, *cxx, *triple;
 };
 
-gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
+gboolean kikai_toolchain_create(GFile *storage, GArray *toolchains,
                                 const KikaiToolchainSpec* spec);

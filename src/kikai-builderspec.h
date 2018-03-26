@@ -2,12 +2,20 @@
 
 #include <glib.h>
 
+typedef enum KikaiToolchainPlatform KikaiToolchainPlatform;
 typedef struct KikaiToolchainSpec KikaiToolchainSpec;
 typedef struct KikaiModuleSourceSpec KikaiModuleSourceSpec;
 typedef struct KikaiModuleSimpleBuildStep KikaiModuleSimpleBuildStep;
 typedef struct KikaiModuleBuildSpec KikaiModuleBuildSpec;
 typedef struct KikaiModuleSpec KikaiModuleSpec;
 typedef struct KikaiBuilderSpec KikaiBuilderSpec;
+
+enum KikaiToolchainPlatform { KIKAI_PLATFORM_ARM, KIKAI_PLATFORM_X86 };
+
+struct KikaiToolchainSpec {
+  const gchar *api, *stl, *after;
+  GArray *platforms;
+};
 
 struct KikaiModuleSourceSpec {
   const gchar *url;
@@ -34,11 +42,6 @@ struct KikaiModuleSpec {
   const gchar *name;
   GArray *sources, *dependencies;
   KikaiModuleBuildSpec build;
-};
-
-struct KikaiToolchainSpec {
-  const gchar *api, *stl, *after;
-  GArray *platforms;
 };
 
 struct KikaiBuilderSpec {

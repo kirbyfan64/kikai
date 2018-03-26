@@ -213,7 +213,7 @@ static gboolean yaml_to_toolchain(KikaiToolchainSpec *toolchain, GHashTable *dat
   }
   GArray *platforms = g_value_get_boxed(platforms_g);
 
-  toolchain->platforms = g_array_new(FALSE, FALSE, sizeof(gchar*));
+  toolchain->platforms = g_array_new(FALSE, FALSE, sizeof(KikaiToolchainPlatform));
 
   for (int i = 0; i < platforms->len; i++) {
     GValue *item_g = &g_array_index(platforms, GValue, i);
@@ -222,7 +222,16 @@ static gboolean yaml_to_toolchain(KikaiToolchainSpec *toolchain, GHashTable *dat
     }
 
     const gchar *item = g_value_get_string(item_g);
-    g_array_append_val(toolchain->platforms, item);
+    KikaiToolchainPlatform platform;
+    if (strcmp(item, "arm") == 0) {
+      platform = KIKAI_PLATFORM_ARM;
+    } else if (strcmp(item, "x86") == 0) {
+      platform = KIKAI_PLATFORM_X86;
+    } else {
+      g_printerr("Invalid toolchain platform: %s", item);
+      return FALSE;
+    }
+    g_array_append_val(toolchain->platforms, platform);
   }
 
   return TRUE;

@@ -47,8 +47,8 @@ int main(int argc, char **argv) {
     modules_to_run = (gpointer*)(argv + 1);
   }
 
-  KikaiToolchain toolchain;
-  if (!kikai_toolchain_create(storage, &toolchain, &builder.toolchain)) {
+  GArray *toolchains = g_array_new(FALSE, FALSE, sizeof(KikaiToolchain));
+  if (!kikai_toolchain_create(storage, toolchains, &builder.toolchain)) {
     return 1;
   }
 
@@ -69,17 +69,24 @@ int main(int argc, char **argv) {
     gchar *id = kikai_hash_bytes((guchar*)module_name, -1, NULL);
     g_autoptr(GFile) extracted = kikai_join(storage, "extracted", id, NULL);
 
+    gboolean updated = FALSE;
+
     kikai_printstatus("build", "Building: %s", module_name);
     for (int i = 0; i < module->sources->len; i++) {
       KikaiModuleSourceSpec *source = &g_array_index(module->sources,
                                                      KikaiModuleSourceSpec, i);
-      if (!kikai_processsource(storage, extracted, id, source)) {
+      if (!kikai_processsource(storage, extracted, id, source, &updated)) {
         return 1;
       }
     }
 
-    if (!kikai_build(module->build, extracted, install_root)) {
-      return 1;
+    for (int i = 0; i < toolchains->len; i++) {
+      KikaiToolchain *toolchain = &g_array_index(toolchains, KikaiToolchain, i);
+      kikai_printstatus("build", "- %s", toolchain->platform);
+
+      if (!kikai_build(toolchain, id, module->build, extracted, install_root, updated)) {
+        return 1;
+      }
     }
 
     modules_to_run++;
