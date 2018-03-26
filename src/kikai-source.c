@@ -391,10 +391,10 @@ gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
         g_printerr("Build step failed: %s", error->message);
         return FALSE;
       }
+    }
 
-      if (!set_key("extracted", module_id, download_id, hash, size)) {
-        return FALSE;
-      }
+    if (!set_key("extracted", module_id, download_id, hash, size)) {
+      return FALSE;
     }
   }
 
