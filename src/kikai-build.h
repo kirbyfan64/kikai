@@ -7,5 +7,5 @@
 #include "kikai-toolchain.h"
 
 gboolean kikai_build(KikaiToolchain *toolchain, const gchar *module_id,
-                     KikaiModuleBuildSpec spec, GFile *where, GFile *install,
-                     gboolean updated);
+                     KikaiModuleBuildSpec spec, GFile *sources, GFile *buildroot,
+                     GFile *install, gboolean updated);

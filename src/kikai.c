@@ -110,7 +110,14 @@ int main(int argc, char **argv) {
       KikaiToolchain *toolchain = &g_array_index(toolchains, KikaiToolchain, i);
       kikai_printstatus("build", "- %s", toolchain->platform);
 
-      if (!kikai_build(toolchain, id, module->build, extracted, install_root, updated)) {
+      g_autoptr(GFile) buildroot = kikai_join(storage, "build", id, toolchain->platform,
+                                              NULL);
+      if (!kikai_mkdir_parents(buildroot)) {
+        return 1;
+      }
+
+      if (!kikai_build(toolchain, id, module->build, extracted, buildroot, install_root,
+                       updated)) {
         return 1;
       }
     }

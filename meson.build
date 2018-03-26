@@ -22,4 +22,5 @@ executable(
     'src/kikai.c', 'src/kikai-build.c', 'src/kikai-builderspec.c', 'src/kikai-source.c',
     'src/kikai-toolchain.c', 'src/kikai-utils.c',
   ],
-  dependencies : [gdbm, glib, gio, gobject, libarchive, libcurl, yaml, libm])
+  dependencies : [gdbm, glib, gio, gobject, libarchive, libcurl, yaml, libm],
+  install : true)

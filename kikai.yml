@@ -17,7 +17,7 @@ modules:
     dependencies: []
     build:
       type: autotools
-      configure-options: CFLAGS="-fPIE -fPIC"
+      # configure-options: CFLAGS="-fPIE -fPIC"
       # make-options: -C gettext-runtime
       # type: simple
       # steps:
