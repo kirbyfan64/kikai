@@ -16,6 +16,58 @@
 #include "kikai-source.h"
 #include "kikai-utils.h"
 
+static gboolean needs_update(const gchar *scope, const gchar *module_id,
+                             const gchar *download_id, const gchar *current_hash,
+                             gchar **old_hash_out, guint64 *old_size_out) {
+  g_autofree gchar *key = g_strjoin("::", scope, module_id, download_id, NULL);
+  g_autofree gchar *old_data = kikai_db_get(key);
+
+  g_autofree gchar *old_hash = NULL;
+  g_autofree gchar *old_size_string = NULL;
+
+  gboolean result;
+  if (old_data == NULL || old_data == &kikai_db_missing) {
+    g_steal_pointer(&old_data);
+    result = TRUE;
+  } else {
+    gchar **parts = g_strsplit(old_data, "::", -1);
+    g_return_val_if_fail(g_strv_length(parts) == 2, FALSE);
+
+    old_hash = parts[0];
+    old_size_string = parts[1];
+
+    g_free(parts);
+
+    result = current_hash != NULL ? strcmp(current_hash, old_hash) != 0 : FALSE;
+  }
+
+  if (!result && old_hash_out != NULL) {
+    g_assert(old_size_out != NULL);
+
+    guint64 old_size;
+    g_return_val_if_fail(
+      g_ascii_string_to_unsigned(old_size_string, 10, 0, G_MAXUINT64, &old_size, NULL),
+      TRUE);
+
+    *old_hash_out = g_steal_pointer(&old_hash);
+    *old_size_out = old_size;
+  }
+
+  return result;
+}
+
+static gboolean set_key(const gchar *scope, const gchar *module_id,
+                        const gchar *download_id, const gchar *hash, guint64 size) {
+  g_autofree gchar *key = g_strjoin("::", scope, module_id, download_id, NULL);
+  g_autofree gchar *value = g_strdup_printf("%s::%"G_GUINT64_FORMAT, hash, size);
+  return kikai_db_set(key, value);
+}
+
+typedef struct {
+  GOutputStream *os;
+  GChecksum *sha;
+} WriterData;
+
 static void progress(const gchar *descr, double fraction, int elapsed) {
   struct winsize win;
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &win);
@@ -60,19 +112,23 @@ static gint old_progress(CURL *curl, double dltotal, double dlnow, double ultota
                   (curl_off_t)ulnow);
 }
 
-static size_t write_data(void *ptr, size_t size, size_t nitems, GOutputStream *os) {
-  g_autoptr(GError) error = NULL;
+static size_t write_data(void *ptr, size_t size, size_t nitems, WriterData *data) {
+  gsize nbytes = size * nitems;
 
-  gssize written = g_output_stream_write(os, ptr, size * nitems, NULL, &error);
+  g_checksum_update(data->sha, ptr, nbytes);
+
+  g_autoptr(GError) error = NULL;
+  gssize written = g_output_stream_write(data->os, ptr, nbytes, NULL, &error);
   if (written == -1) {
     g_printerr("Writing data to file: %s", error->message);
     return 0;
   }
 
-  return size * nitems;
+  return nbytes;
 }
 
-static gboolean download_file(const gchar *url, GFile *target, guint64 *size) {
+static gboolean download_file(const gchar *url, GFile *target, gchar **hash,
+                              guint64 *size) {
   if (g_file_query_exists(target, NULL)) {
     g_file_delete(target, NULL, NULL);
   }
@@ -91,6 +147,12 @@ static gboolean download_file(const gchar *url, GFile *target, guint64 *size) {
     return FALSE;
   }
 
+  g_autoptr(GChecksum) sha = g_checksum_new(G_CHECKSUM_SHA256);
+  WriterData data = {.os = g_io_stream_get_output_stream((GIOStream*)ios), .sha = sha};
+
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
+
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
@@ -102,10 +164,6 @@ static gboolean download_file(const gchar *url, GFile *target, guint64 *size) {
   curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xferinfo);
   curl_easy_setopt(curl, CURLOPT_XFERINFODATA, curl);
 #endif
-
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA,
-                   g_io_stream_get_output_stream((GIOStream*)ios));
 
   CURLcode status = curl_easy_perform(curl);
   if (status == CURLE_OK) {
@@ -123,6 +181,7 @@ static gboolean download_file(const gchar *url, GFile *target, guint64 *size) {
     return FALSE;
   }
 
+  *hash = g_strdup(g_checksum_get_string(sha));
   return TRUE;
 }
 
@@ -150,7 +209,7 @@ gboolean copy_archive_data(struct archive *reader, struct archive *writer) {
   return TRUE;
 }
 
-gboolean extract_file_to_cwd(GFile *archive, guint64 size, int strip_parents) {
+static gboolean extract_file_to_cwd(GFile *archive, guint64 size, int strip_parents) {
   struct archive *reader = archive_read_new(), *writer = archive_write_disk_new();
 
   g_autoptr(GTimer) timer = g_timer_new();
@@ -257,8 +316,8 @@ gboolean extract_file_to_cwd(GFile *archive, guint64 size, int strip_parents) {
   return success;
 }
 
-gboolean extract_file(GFile *archive, GFile *extracted, guint64 size,
-                      int strip_parents) {
+static gboolean extract_file(GFile *archive, GFile *extracted, guint64 size,
+                             int strip_parents) {
   gchar *orig_cwd = g_get_current_dir();
   if (g_chdir(g_file_get_path(extracted)) == -1) {
     g_printerr("Setting working directory: %s", strerror(errno));
@@ -270,44 +329,54 @@ gboolean extract_file(GFile *archive, GFile *extracted, guint64 size,
   return status;
 }
 
-GFile *kikai_processsource(GFile *storage, gchar *module_id,
-                           KikaiModuleSourceSpec *source) {
+gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
+                             KikaiModuleSourceSpec *source) {
   g_autofree gchar *download_id = kikai_hash_bytes((guchar*)source->url, -1, NULL);
   g_autoptr(GFile) downloads = kikai_join(storage, "downloads", module_id, NULL);
 
-  g_autoptr(GFile) extracted = kikai_join(storage, "extracted", module_id, download_id,
-                                          NULL);
-  g_autoptr(GFile) meta = g_file_get_child(extracted, ".kikai-meta");
-
-  if (g_file_query_exists(meta, NULL)) {
-    return g_steal_pointer(&extracted);
-  }
-
-  kikai_printstatus("source", "Processing: %s", source->url);
-
-  if (!kikai_mkdir_parents(downloads)) {
-    return NULL;
-  }
-
-  g_autoptr(GFile) download = g_file_get_child(downloads, download_id);
   guint64 size = 0;
-  if (!download_file(source->url, download, &size)) {
-    return NULL;
+  g_autofree gchar *hash = NULL;
+  g_autoptr(GFile) download = g_file_get_child(downloads, download_id);
+  gboolean update_download = !g_file_query_exists(download, NULL) ||
+                             needs_update("download", module_id, download_id, NULL,
+                                          &hash, &size);
+
+  if (update_download) {
+    kikai_printstatus("source", "Processing: %s", source->url);
+
+    if (!kikai_mkdir_parents(downloads)) {
+      return FALSE;
+    }
+
+    if (!download_file(source->url, download, &hash, &size)) {
+      return FALSE;
+    }
+
+    if (!set_key("download", module_id, download_id, hash, size)) {
+      return FALSE;
+    }
   }
 
-  if (!kikai_mkdir_parents(extracted)) {
-    return NULL;
-  }
-  if (!extract_file(download, extracted, size, source->strip_parents)) {
-    return NULL;
+  gboolean update_extracted = update_download ||
+                              needs_update("extracted", module_id, download_id, NULL,
+                                           NULL, NULL);
+
+  if (update_extracted) {
+    if (!update_download) {
+      kikai_printstatus("source", "Processing: %s", source->url);
+    }
+
+    if (!kikai_mkdir_parents(extracted)) {
+      return FALSE;
+    }
+    if (!extract_file(download, extracted, size, source->strip_parents)) {
+      return FALSE;
+    }
+
+    if (!set_key("extracted", module_id, download_id, hash, size)) {
+      return FALSE;
+    }
   }
 
-  g_autoptr(GError) error = NULL;
-  if (!g_file_replace_contents(meta, "", 0, "", 0, G_FILE_CREATE_NONE, NULL, NULL,
-      &error)) {
-    g_printerr("Failed to save archive metadata: %s", error->message);
-    return NULL;
-  }
-
-  return g_steal_pointer(&extracted);
+  return TRUE;
 }

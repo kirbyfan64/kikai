@@ -3,6 +3,12 @@
 
 #include "kikai-utils.h"
 
+#include <stdlib.h>
+#include <string.h>
+
+#include <gdbm.h>
+
+
 void kikai_printstatus(const gchar *descr, const gchar *fmt, ...) {
   gboolean suffix = TRUE;
   if (descr[0] == '-' || descr[0] == '<') {
@@ -77,4 +83,54 @@ GFile *kikai_join(GFile *parent, const gchar *child, ...) {
   }
 
   return current;
+}
+
+static GDBM_FILE kikai_db = NULL;
+gchar kikai_db_missing = '\0';
+
+gboolean kikai_db_load(GFile *storage) {
+  g_autoptr(GFile) db = g_file_get_child(storage, "kikai.db");
+  kikai_db = gdbm_open(g_file_get_path(db), 0, GDBM_WRCREAT | GDBM_SYNC, 0644, NULL);
+  if (kikai_db == NULL) {
+    g_printerr("Failed to load database: %s", gdbm_db_strerror(kikai_db));
+    return FALSE;
+  }
+
+  atexit(kikai_db_close);
+  return TRUE;
+}
+
+void kikai_db_close() {
+  if (kikai_db != NULL) {
+    gdbm_close(kikai_db);
+    kikai_db = NULL;
+  }
+}
+
+gchar *kikai_db_get(const gchar *key) {
+  datum dkey = {.dptr = (gchar *)key, .dsize = strlen(key)};
+  datum dvalue = gdbm_fetch(kikai_db, dkey);
+
+  if (dvalue.dptr == NULL) {
+    if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
+      return &kikai_db_missing;
+    } else {
+      g_printerr("Failed to retrieve key %s: %s", key, gdbm_db_strerror(kikai_db));
+      return NULL;
+    }
+  }
+
+  return dvalue.dptr;
+}
+
+gboolean kikai_db_set(const gchar *key, const gchar *value) {
+  datum dkey = {.dptr = (gchar *)key, .dsize = strlen(key)};
+  datum dvalue = {.dptr = (gchar *)value, .dsize = strlen(value) + 1};
+
+  if (gdbm_store(kikai_db, dkey, dvalue, GDBM_REPLACE) == -1) {
+    g_printerr("Failed store key %s: %s", key, gdbm_db_strerror(kikai_db));
+    return FALSE;
+  }
+
+  return TRUE;
 }

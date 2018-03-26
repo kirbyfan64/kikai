@@ -22,19 +22,13 @@ static gchar *find_ndk() {
   return NULL;
 }
 
-static gboolean needs_update(GFile *meta, gchar *current_hash) {
-  if (!g_file_query_exists(meta, NULL)) {
+static gboolean needs_update(gchar *current_hash) {
+  g_autofree gchar *old_hash = kikai_db_get("toolchain");
+  if (old_hash == NULL || old_hash == &kikai_db_missing) {
+    g_steal_pointer(&old_hash);
     return TRUE;
   }
-
-  g_autoptr(GError) error = NULL;
-  g_autofree gchar *contents = NULL;
-
-  if (!g_file_load_contents(meta, NULL, &contents, NULL, NULL, &error)) {
-    return TRUE;
-  }
-
-  return strcmp(current_hash, contents) != 0;
+  return strcmp(current_hash, old_hash) != 0;
 }
 
 gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
@@ -57,19 +51,14 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
 
     const gchar *platform = g_array_index(spec->platforms, gchar *, i);
     g_autoptr(GFile) target = kikai_join(storage, "toolchains", platform , NULL);
-    g_autoptr(GFile) meta = g_file_get_child(target, ".kikai-meta");
 
     g_autofree gchar *current_hash = kikai_hash_bytes((guchar*)spec->api, -1,
                                                       (guchar*)spec->stl, -1,
                                                       (guchar*)spec->after, -1,
                                                       NULL);
 
-    if (!needs_update(meta, current_hash)) {
+    if (!needs_update(current_hash)) {
       continue;
-    }
-
-    if (g_file_query_exists(meta, NULL)) {
-      g_file_delete(meta, NULL, NULL);
     }
 
     kikai_printstatus("toolchain", "Creating %s toolchain (this may take a while)...",
@@ -105,9 +94,7 @@ gboolean kikai_toolchain_create(GFile *storage, KikaiToolchain *toolchain,
       }
     }
 
-    if (!g_file_replace_contents(meta, current_hash, strlen(current_hash), "", 0,
-                                 G_FILE_CREATE_NONE, NULL, NULL, &error)) {
-      g_printerr("Failed to save %s toolchain metadata: %s", platform, error->message);
+    if (!kikai_db_set("toolchain", current_hash)) {
       return FALSE;
     }
   }

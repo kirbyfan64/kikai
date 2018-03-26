@@ -4,5 +4,5 @@
 
 #include "kikai-builderspec.h"
 
-GFile *kikai_processsource(GFile *storage, gchar *module_id,
-                           KikaiModuleSourceSpec *source);
+gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
+                             KikaiModuleSourceSpec *source);
