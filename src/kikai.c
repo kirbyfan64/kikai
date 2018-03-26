@@ -16,6 +16,31 @@ static void on_error(const gchar *string) {
   fprintf(stderr, KIKAI_CBOLD KIKAI_CRED "Error: " KIKAI_CRESET "%s\n", string);
 }
 
+static gboolean process_deps(GArray *modules_to_run, GHashTable *already_present,
+                             GHashTable *all_modules, gchar **requested_modules) {
+  for (; *requested_modules; requested_modules++) {
+    gchar *module_name = *requested_modules;
+    if (!g_hash_table_add(already_present, module_name)) {
+      continue;
+    }
+
+    KikaiModuleSpec *module = g_hash_table_lookup(all_modules, module_name);
+    if (module == NULL) {
+      g_printerr("Non-existent module: %s", module_name);
+      return FALSE;
+    }
+
+    if (!process_deps(modules_to_run, already_present, all_modules,
+                      (gchar **)module->dependencies->data)) {
+      return FALSE;
+    }
+
+    g_array_append_val(modules_to_run, module);
+  }
+
+  return TRUE;
+}
+
 int main(int argc, char **argv) {
   g_set_printerr_handler(on_error);
 
@@ -39,12 +64,19 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  gpointer *modules_to_run;
+  gchar **requested_modules;
   if (argc == 1) {
     guint len;
-    modules_to_run = g_hash_table_get_keys_as_array(builder.modules, &len);
+    requested_modules = (gchar **)g_hash_table_get_keys_as_array(builder.modules, &len);
   } else {
-    modules_to_run = (gpointer*)(argv + 1);
+    requested_modules = argv + 1;
+  }
+
+  g_autoptr(GArray) modules_to_run = g_array_new(FALSE, FALSE, sizeof(gchar *));
+  g_autoptr(GHashTable) already_present = g_hash_table_new(g_str_hash, g_str_equal);
+  if (!process_deps(modules_to_run, already_present,
+                    builder.modules, requested_modules)) {
+    return FALSE;
   }
 
   GArray *toolchains = g_array_new(FALSE, FALSE, sizeof(KikaiToolchain));
@@ -57,21 +89,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  while (*modules_to_run) {
-    const gchar *module_name = *modules_to_run;
+  for (int i = 0; i < modules_to_run->len; i++) {
+    KikaiModuleSpec *module = g_array_index(modules_to_run, KikaiModuleSpec*, i);
 
-    KikaiModuleSpec *module = g_hash_table_lookup(builder.modules, module_name);
-    if (module == NULL) {
-      g_printerr("Non-existent module: %s", module_name);
-      return 1;
-    }
-
-    gchar *id = kikai_hash_bytes((guchar*)module_name, -1, NULL);
+    gchar *id = kikai_hash_bytes((guchar*)module->name, -1, NULL);
     g_autoptr(GFile) extracted = kikai_join(storage, "extracted", id, NULL);
 
     gboolean updated = FALSE;
 
-    kikai_printstatus("build", "Building: %s", module_name);
+    kikai_printstatus("build", "Building: %s", module->name);
     for (int i = 0; i < module->sources->len; i++) {
       KikaiModuleSourceSpec *source = &g_array_index(module->sources,
                                                      KikaiModuleSourceSpec, i);
@@ -88,8 +114,6 @@ int main(int argc, char **argv) {
         return 1;
       }
     }
-
-    modules_to_run++;
   }
 
   return 0;

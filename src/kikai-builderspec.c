@@ -277,7 +277,7 @@ static gboolean yaml_to_sources(GArray **sources, KikaiModuleSpec *module,
 
 static gboolean yaml_to_dependencies(GArray **dependencies, KikaiModuleSpec *module,
                                      GArray *data) {
-  *dependencies = g_array_new(FALSE, FALSE, sizeof(gchar*));
+  *dependencies = g_array_new(TRUE, FALSE, sizeof(gchar*));
 
   for (int i = 0; i < data->len; i++) {
     GValue *dep_v = &g_array_index(data, GValue, i);

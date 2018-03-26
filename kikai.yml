@@ -31,11 +31,3 @@ modules:
 
       #       echo CC: $CC
       #       echo CXX: $CXX
-
-# modules:
-#   cairo:
-#     sources:
-#       - url: url
-#       - strip-parents: 1
-#     dependencies:
-#       - glib
