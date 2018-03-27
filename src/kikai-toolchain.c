@@ -73,10 +73,8 @@ gboolean kikai_toolchain_create(GFile *storage, GArray *toolchains,
 
     g_array_append_val(toolchains, toolchain);
 
-    g_autofree gchar *current_hash = kikai_hash_bytes((guchar*)spec->api, -1,
-                                                      (guchar*)spec->stl, -1,
-                                                      (guchar*)spec->after, -1,
-                                                      NULL);
+    g_autofree gchar *current_hash = kikai_hash_bytes(spec->api, -1, spec->stl, -1,
+                                                      spec->after, -1, NULL);
 
     if (!needs_update(current_hash)) {
       continue;

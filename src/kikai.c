@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
   for (int i = 0; i < modules_to_run->len; i++) {
     KikaiModuleSpec *module = g_array_index(modules_to_run, KikaiModuleSpec*, i);
 
-    gchar *id = kikai_hash_bytes((guchar*)module->name, -1, NULL);
+    gchar *id = kikai_hash_bytes(module->name, -1, NULL);
     g_autoptr(GFile) extracted = kikai_join(storage, "extracted", id, NULL);
 
     gboolean updated = FALSE;

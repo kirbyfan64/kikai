@@ -11,7 +11,7 @@
 
 void kikai_printstatus(const gchar *descr, const gchar *fmt, ...) G_GNUC_PRINTF(2, 3);
 gboolean kikai_mkdir_parents(GFile *dir);
-gchar *kikai_hash_bytes(const guchar *first, ...) G_GNUC_NULL_TERMINATED;
+gchar *kikai_hash_bytes(const gchar *first, ...) G_GNUC_NULL_TERMINATED;
 GFile *kikai_join(GFile *parent, const gchar *child, ...) G_GNUC_NULL_TERMINATED;
 
 extern gchar kikai_db_missing;

@@ -69,7 +69,7 @@ static gboolean simple_build(KikaiToolchain *toolchain, const gchar *module_id,
     KikaiModuleSimpleBuildStep *step = &g_array_index(spec.simple.steps,
                                                       KikaiModuleSimpleBuildStep, i);
 
-    g_autofree gchar *hash = kikai_hash_bytes((guchar *)step->run, -1, NULL);
+    g_autofree gchar *hash = kikai_hash_bytes(step->run, -1, NULL);
     if (!needs_update("build-simple", module_id, step->name, hash)) {
       continue;
     }
@@ -99,9 +99,7 @@ static gboolean simple_build(KikaiToolchain *toolchain, const gchar *module_id,
   return TRUE;
 }
 
-static gchar *hash_options(const gchar *options) {
-  return kikai_hash_bytes((guchar *)options, options != NULL ? -1 : 0, NULL);
-}
+#define null_or(value, if_null) ((value) != NULL ? (value) : (if_null))
 
 static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_id,
                                 KikaiModuleBuildSpec spec, GFile *sources,
@@ -115,8 +113,13 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
   g_autoptr(GError) error = NULL;
   gint status;
 
-  g_autofree gchar *configure_hash = hash_options(spec.autotools.configure_options),
-                   *make_hash = hash_options(spec.autotools.make_options);
+  g_autofree gchar
+    *configure_hash = kikai_hash_bytes(null_or(spec.autotools.configure_options, ""), -1,
+                                       null_or(spec.autotools.cflags, ""), -1,
+                                       null_or(spec.autotools.cppflags, ""), -1,
+                                       null_or(spec.autotools.ldflags, ""), -1,
+                                       NULL),
+    *make_hash = kikai_hash_bytes(null_or(spec.autotools.make_options, ""), -1, NULL);
 
   if (updated || needs_update("build-autotools", module_id, "configure",
       configure_hash)) {

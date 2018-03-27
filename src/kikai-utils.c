@@ -46,20 +46,20 @@ gboolean kikai_mkdir_parents(GFile *dir) {
   return TRUE;
 }
 
-gchar *kikai_hash_bytes(const guchar *first, ...) {
+gchar *kikai_hash_bytes(const gchar *first, ...) {
   va_list args;
   va_start(args, first);
 
   g_autoptr(GChecksum) sha = g_checksum_new(G_CHECKSUM_SHA256);
-  g_checksum_update(sha, first, va_arg(args, gint));
+  g_checksum_update(sha, (guchar *)first, va_arg(args, gint));
 
   for (;;) {
-    const guchar *item = va_arg(args, const guchar *);
+    const gchar *item = va_arg(args, const gchar *);
     if (item == NULL) {
       break;
     }
 
-    g_checksum_update(sha, item, va_arg(args, gint));
+    g_checksum_update(sha, (guchar *)item, va_arg(args, gint));
   }
 
   va_end(args);
