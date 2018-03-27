@@ -123,6 +123,12 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
 
   if (updated || needs_update("build-autotools", module_id, "configure",
       configure_hash)) {
+    g_autofree gchar *pkgconf = g_find_program_in_path("pkgconf");
+    if (pkgconf == NULL) {
+      g_printerr("pkgconf is required.");
+      return FALSE;
+    }
+
     g_autoptr(GFile) configure = g_file_get_child(sources, "configure");
     if (!g_file_query_exists(configure, NULL)) {
       g_autoptr(GFile) autogen = g_file_get_child(sources, "autogen.sh");
@@ -160,7 +166,7 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
 
     g_autoptr(GFile) include = g_file_get_child(install, "include");
     g_autoptr(GFile) lib = g_file_get_child(install, "lib");
-    g_autoptr(GFile) pkgconfig = g_file_get_child(lib, "pkgconfig");
+    g_autoptr(GFile) pkgconfigpath = g_file_get_child(lib, "pkgconfig");
 
     g_autofree gchar *include_arg = g_strconcat("-I", g_file_get_path(include), NULL);
     g_autofree gchar *lib_arg = g_strconcat("-L", g_file_get_path(lib), NULL);
@@ -191,9 +197,15 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
     g_autofree gchar *configure_ldflags = g_strjoin("=", "LDFLAGS", ldflags, NULL);
     g_array_append_val(configure_args, configure_ldflags);
 
-    g_autofree gchar *configure_pkgconfig = g_strjoin("=", "PKG_CONFIG_PATH",
-                                                      g_file_get_path(pkgconfig), NULL);
+    g_autofree gchar *pkgconfig = g_strjoin(" ", pkgconf, "--env-only", NULL);
+    g_autofree gchar *configure_pkgconfig = g_strjoin("=", "PKG_CONFIG", pkgconfig,
+                                                      NULL);
     g_array_append_val(configure_args, configure_pkgconfig);
+
+    g_autofree gchar *configure_pkgconfigpath = g_strjoin("=", "PKG_CONFIG_PATH",
+                                                          g_file_get_path(pkgconfigpath),
+                                                          NULL);
+    g_array_append_val(configure_args, configure_pkgconfigpath);
 
     g_autofree gchar *configure_prefix = g_strjoin("=", "--prefix",
                                                    g_file_get_path(install), NULL);

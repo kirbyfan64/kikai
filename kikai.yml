@@ -8,26 +8,10 @@ toolchain:
     sed -i '/IP_ADD_SOURCE_MEMBERSHIP/d' sysroot/usr/include/linux/in.h
 
 modules:
-  cairo:
-    sources:
-      - url: ftp://sourceware.org/pub/libffi/libffi-3.2.1.tar.gz
-        strip-parents: 1
-        after: |
-          sed -i 's/stmeqia/stmiaeq/' src/arm/sysv.S
+  iconv:
     dependencies: []
+    sources:
+      - url: https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.15.tar.gz
+        strip-parents: 1
     build:
       type: autotools
-      # configure-options: CFLAGS="-fPIE -fPIC"
-      # make-options: -C gettext-runtime
-      # type: simple
-      # steps:
-      #   - name: configure
-      #     run: |
-      #       echo KIKAI_PREFIX: $KIKAI_PREFIX
-      #       echo KIKAI_TOOLCHAIN: $KIKAI_TOOLCHAIN
-      #       echo KIKAI_TRIPLE: $KIKAI_TRIPLE
-      #       echo KIKAI_CC: $KIKAI_CC
-      #       echo KIKAI_CXX: $KIKAI_CXX
-
-      #       echo CC: $CC
-      #       echo CXX: $CXX
