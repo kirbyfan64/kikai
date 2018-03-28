@@ -166,7 +166,8 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
 
     g_autoptr(GFile) include = g_file_get_child(install, "include");
     g_autoptr(GFile) lib = g_file_get_child(install, "lib");
-    g_autoptr(GFile) pkgconfigpath = g_file_get_child(lib, "pkgconfig");
+    g_autoptr(GFile) pkgconfiglib = g_file_get_child(lib, "pkgconfig");
+    g_autoptr(GFile) pkgconfigshare = kikai_join(install, "share", "pkgconfig", NULL);
 
     g_autofree gchar *include_arg = g_strconcat("-I", g_file_get_path(include), NULL);
     g_autofree gchar *lib_arg = g_strconcat("-L", g_file_get_path(lib), NULL);
@@ -202,9 +203,10 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
                                                       NULL);
     g_array_append_val(configure_args, configure_pkgconfig);
 
+    g_autofree gchar *pkgconfigpath = g_strjoin(":", g_file_get_path(pkgconfiglib),
+                                                g_file_get_path(pkgconfigshare), NULL);
     g_autofree gchar *configure_pkgconfigpath = g_strjoin("=", "PKG_CONFIG_PATH",
-                                                          g_file_get_path(pkgconfigpath),
-                                                          NULL);
+                                                          pkgconfigpath, NULL);
     g_array_append_val(configure_args, configure_pkgconfigpath);
 
     g_autofree gchar *configure_prefix = g_strjoin("=", "--prefix",
