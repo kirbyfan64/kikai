@@ -74,23 +74,44 @@ static void progress(const gchar *descr, double fraction, int elapsed) {
 
   g_autofree gchar *elapsed_s = g_strdup_printf("%02d:%02ds", (int)elapsed / 60,
                                                 (int)elapsed % 60);
-  int percent = fraction * 100;
 
-  kikai_printstatus(descr, "% 4d%% %s", percent, elapsed_s);
+  if (fraction >= 0) {
+    int percent = fraction * 100;
+    kikai_printstatus(descr, "% 4d%% %s", percent, elapsed_s);
+  } else {
+    kikai_printstatus(descr, "  --%% %s", elapsed_s);
+  }
 
   gint progress_size = win.ws_col - (strlen(descr) + 1 + 13);
   if (progress_size > 3) {
     gint bar_size = progress_size - 3;
-    gint bar_complete = ceil(fraction * bar_size);
-    gint bar_left = bar_size - bar_complete;
 
     g_printf(" [");
-    for (int i = 0; i < bar_complete; i++) {
+
+    if (fraction >= 0) {
+      gint bar_complete = ceil(fraction * bar_size);
+      gint bar_left = bar_size - bar_complete;
+
+      for (int i = 0; i < bar_complete; i++) {
+        g_printf("#");
+      }
+      for (int i = 0; i < bar_left; i++) {
+        g_printf("-");
+      }
+    } else {
+      gint pos = (elapsed % bar_size);
+      if ((elapsed / bar_size) % 2 != 0) {
+        pos = bar_size - pos - 1;
+      }
+      for (int i = 0; i < pos; i++) {
+        g_printf("-");
+      }
       g_printf("#");
+      for (int i = pos + 1; i < bar_size; i++) {
+        g_printf("-");
+      }
     }
-    for (int i = 0; i < bar_left; i++) {
-      g_printf("-");
-    }
+
     g_printf("]");
     fflush(stdout);
   }
@@ -101,7 +122,7 @@ static gint xferinfo(CURL *curl, curl_off_t dltotal, curl_off_t dlnow,
   double elapsed = 0;
   curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &elapsed);
 
-  double fraction = (double)dlnow / (dltotal == 0 ? 1 : dltotal);
+  double fraction = dltotal == 0 ? -1 : (double)dlnow / dltotal;
   progress("<download", fraction, elapsed);
   return 0;
 }
@@ -331,9 +352,8 @@ static gboolean extract_file(GFile *archive, GFile *extracted, guint64 size,
 
 gboolean kikai_processsource(GFile *storage, GFile *extracted, gchar *module_id,
                              KikaiModuleSourceSpec *source, gboolean *updated) {
-  g_autofree gchar *download_id = kikai_hash_bytes((guchar*)source->url, -1,
-                                                   (guchar*)source->after, -1,
-                                                   (guchar*)&source->strip_parents,
+  g_autofree gchar *download_id = kikai_hash_bytes(source->url, -1, source->after, -1,
+                                                   &source->strip_parents,
                                                    sizeof(source->strip_parents), NULL);
   g_autoptr(GFile) downloads = kikai_join(storage, "downloads", module_id, NULL);
 
