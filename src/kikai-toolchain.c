@@ -7,6 +7,14 @@
 #include "kikai-toolchain.h"
 #include "kikai-utils.h"
 
+#ifdef __x86_64__
+#define ARCH "x86_64"
+#elif __i386__
+#define ARCH "i686"
+#else
+#error Unknown architecture
+#endif
+
 static gchar *find_ndk() {
   gchar *ndk = getenv("ANDROID_NDK");
   if (ndk != NULL) {
@@ -33,21 +41,24 @@ static gboolean needs_update(gchar *current_hash) {
 
 gboolean kikai_toolchain_create(GFile *storage, GArray *toolchains,
                                 const KikaiToolchainSpec *spec) {
-  gchar *ndk = find_ndk();
-  if (ndk == NULL) {
+  gchar *ndk_path = find_ndk();
+  if (ndk_path == NULL) {
     return FALSE;
   }
 
-  g_autoptr(GFile) make_standalone_toolchain =
-    kikai_join(g_file_new_for_path(ndk), "build", "tools",
-               "make_standalone_toolchain.py", NULL);
-  if (!g_file_query_exists(make_standalone_toolchain, NULL)) {
+  g_autoptr(GFile) ndk_file = g_file_new_for_path(ndk_path);
+
+  g_autoptr(GFile) make_standalone_toolchain = kikai_join(ndk_file, "build", "tools",
+                                                          "make_standalone_toolchain.py", NULL);
+
+  if (spec->standalone && !g_file_query_exists(make_standalone_toolchain, NULL)) {
     g_printerr("%s does not exist.", g_file_get_path(make_standalone_toolchain));
     return FALSE;
   }
 
-  const gchar *platform_names[] = {"arm", "x86"};
-  const gchar *platform_triples[] = {"arm-linux-androideabi", "i686-linux-android"};
+  const gchar *platform_names[] = {"armv7a", "arm64", "x86", "x86_64"};
+  const gchar *platform_triples[] = {"armv7a-linux-androideabi", "aarch64-linux-android",
+                                     "i686-linux-android", "x86_64-linux-android"};
 
   for (int i = 0; i < spec->platforms->len; i++) {
     g_autoptr(GError) error = NULL;
@@ -55,23 +66,41 @@ gboolean kikai_toolchain_create(GFile *storage, GArray *toolchains,
     KikaiToolchainPlatform platform = g_array_index(spec->platforms,
                                                     KikaiToolchainPlatform, i);
     const gchar *platform_name = platform_names[platform];
-    g_autoptr(GFile) target = kikai_join(storage, "toolchains", platform_name, NULL);
+
+    g_autoptr(GFile) target = NULL;
+    if (spec->standalone) {
+      target = kikai_join(storage, "toolchains", platform_name, NULL);
+    } else {
+      target = kikai_join(ndk_file, "toolchains", "llvm", "prebuilt", "linux-"ARCH, NULL);
+    }
 
     const gchar *triple = platform_triples[platform];
+    g_autofree gchar *compiler_triple = NULL;
+    if (spec->standalone) {
+      compiler_triple = g_strdup(triple);
+    } else {
+      compiler_triple = g_strconcat(triple, spec->api, NULL);
+    }
 
     KikaiToolchain toolchain;
+    toolchain.standalone = spec->standalone;
     toolchain.platform = g_strdup(platform_name);
+
     toolchain.path = g_strdup(g_file_get_path(target));
 
-    g_autofree gchar *cc = g_strjoin("-", triple, "clang", NULL);
+    g_autofree gchar *cc = g_strjoin("-", compiler_triple, "clang", NULL);
     toolchain.cc = g_build_filename(g_file_get_path(target), "bin", cc, NULL);
 
-    g_autofree gchar *cxx = g_strjoin("-", triple, "clang++", NULL);
+    g_autofree gchar *cxx = g_strjoin("-", compiler_triple, "clang++", NULL);
     toolchain.cxx = g_build_filename(g_file_get_path(target), "bin", cxx, NULL);
 
     toolchain.triple = g_strdup(triple);
 
     g_array_append_val(toolchains, toolchain);
+
+    if (!spec->standalone) {
+      continue;
+    }
 
     g_autofree gchar *current_hash = kikai_hash_bytes(spec->api, -1, spec->stl, -1,
                                                       spec->after, -1, NULL);

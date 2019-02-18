@@ -4,8 +4,8 @@ toolchain:
   api: 21
   platforms: [arm]
   stl: libc++
-  after: |
-    sed -i '/IP_ADD_SOURCE_MEMBERSHIP/d' sysroot/usr/include/linux/in.h
+  # after: |
+  #   sed -i '/IP_ADD_SOURCE_MEMBERSHIP/d' sysroot/usr/include/linux/in.h
 
 modules:
   iconv:

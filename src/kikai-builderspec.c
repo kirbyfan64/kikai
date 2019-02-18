@@ -27,9 +27,15 @@ static void read_yaml_node(GValue *value, yaml_document_t *doc, yaml_node_t *nod
     g_value_set_static_string(value, "");
     break;
   case YAML_SCALAR_NODE:
-    g_value_init(value, G_TYPE_STRING);
-    g_value_take_string(value, g_strndup((gchar*)node->data.scalar.value,
-                                         node->data.scalar.length));
+    if (strncmp((gchar *)node->data.scalar.value, "true", node->data.scalar.length) == 0 ||
+        strncmp((gchar *)node->data.scalar.value, "false", node->data.scalar.length) == 0) {
+      g_value_init(value, G_TYPE_BOOLEAN);
+      g_value_set_boolean(value, *node->data.scalar.value == 't');
+    } else {
+      g_value_init(value, G_TYPE_STRING);
+      g_value_take_string(value, g_strndup((gchar*)node->data.scalar.value,
+                                           node->data.scalar.length));
+    }
     break;
   case YAML_SEQUENCE_NODE:
     g_value_init(value, G_TYPE_ARRAY);
@@ -194,6 +200,14 @@ static gboolean yaml_to_toolchain(KikaiToolchainSpec *toolchain, GHashTable *dat
     return FALSE;
   }
   toolchain->stl = g_value_get_string(stl_g);
+
+  GValue *standalone_g = NULL;
+  if (g_hash_table_lookup(data, "standalone") &&
+      !check_key_type(data, G_TYPE_BOOLEAN, "standalone", &standalone_g,
+                      "toolchain.standalone")) {
+    return FALSE;
+  }
+  toolchain->standalone = standalone_g ? g_value_get_boolean(standalone_g) : FALSE;
 
   GValue *after_g = NULL;
   if (g_hash_table_lookup(data, "after") &&

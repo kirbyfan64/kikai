@@ -14,6 +14,7 @@ enum KikaiToolchainPlatform { KIKAI_PLATFORM_ARM, KIKAI_PLATFORM_X86 };
 
 struct KikaiToolchainSpec {
   const gchar *api, *stl, *after;
+  gboolean standalone;
   GArray *platforms;
 };
 

@@ -247,7 +247,9 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
 
     GArray *make_args = g_array_new(TRUE, FALSE, sizeof(gchar *));
 
-    g_autofree gchar *make_path = g_build_filename(toolchain->path, "bin", "make", NULL);
+    g_autofree gchar *make_path = toolchain->standalone
+                                  ? g_build_filename(toolchain->path, "bin", "make", NULL)
+                                  : g_strdup("make");
     g_array_append_val(make_args, make_path);
 
     const gchar *make_install = "install";
@@ -260,7 +262,7 @@ static gboolean autotools_build(KikaiToolchain *toolchain, const gchar *module_i
     kikai_printstatus("build", "  - make");
 
     if (!g_spawn_sync(g_file_get_path(buildroot), (gchar **)make_args->data, env,
-                      G_SPAWN_DEFAULT, NULL, NULL, NULL, NULL, &status, &error)) {
+                      G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL, &status, &error)) {
       g_printerr("Failed to spawn make: %s", error->message);
       return FALSE;
     }
