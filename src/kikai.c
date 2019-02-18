@@ -92,7 +92,10 @@ int main(int argc, char **argv) {
   for (int i = 0; i < modules_to_run->len; i++) {
     KikaiModuleSpec *module = g_array_index(modules_to_run, KikaiModuleSpec*, i);
 
-    gchar *id = kikai_hash_bytes(module->name, -1, NULL);
+    g_autofree gchar *id = kikai_hash_bytes(module->name, -1, NULL);
+    g_autofree gchar *short_id = g_strdup(id);
+    short_id[8] = '\0';
+
     g_autoptr(GFile) extracted = kikai_join(storage, "extracted", id, NULL);
 
     gboolean updated = FALSE;
@@ -110,7 +113,8 @@ int main(int argc, char **argv) {
       KikaiToolchain *toolchain = &g_array_index(toolchains, KikaiToolchain, i);
       kikai_printstatus("build", "- %s", toolchain->platform);
 
-      g_autoptr(GFile) buildroot = kikai_join(storage, "build", id, toolchain->platform,
+      g_autofree gchar *folder = g_strconcat(module->name, "--", short_id, NULL);
+      g_autoptr(GFile) buildroot = kikai_join(storage, "build", folder, toolchain->platform,
                                               NULL);
       if (!kikai_mkdir_parents(buildroot)) {
         return 1;
